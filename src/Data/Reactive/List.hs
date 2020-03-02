@@ -1,6 +1,8 @@
 {-# language GADTs, KindSignatures, LambdaCase, RecursiveDo, TypeFamilies #-}
+{-# language RankNTypes #-}
 module Data.Reactive.List where
 
+import Prelude hiding (map)
 import Data.Functor.Identity
 import Data.Reactive.Class
 import Reflex
@@ -9,6 +11,10 @@ import Reflex.Network
 data List u (f :: * -> *)
   = Nil
   | Cons (u f) (f (List u f))
+
+map :: Functor f => (forall g. Functor g => u g -> v g) -> List u f -> List v f
+map f Nil = Nil
+map f (Cons a b) = Cons (f a) (map f <$> b)
 
 instance Reactive u => Reactive (List u) where
   data Change (List u) where

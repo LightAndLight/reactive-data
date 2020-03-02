@@ -1,4 +1,5 @@
 {-# language LambdaCase #-}
+{-# language FlexibleContexts #-}
 module Main where
 
 import Control.Concurrent
@@ -10,7 +11,9 @@ import Reflex.Host.Basic
 
 import Data.Reactive.Class
 import Data.Reactive.List (List(..), Change(..))
+import qualified Data.Reactive.List as List
 import Data.Reactive.Leaf (Leaf(..), Change(..))
+import qualified Data.Reactive.Leaf as Leaf
 
 type ReactiveString = List (Leaf Char)
 
@@ -56,9 +59,16 @@ main = do
         loop
     liftIO $ forkIO loop
     (dString, eQuit) <- network eCommand
-    performEvent_ $
-      liftIO . putStrLn . toString <$>
-      updated (dString >>= freeze)
+
+    let
+      printUpdated ps d =
+        performEvent_ $
+          liftIO . putStrLn . (ps <>) . (": " <>) . toString <$>
+          updated (d >>= freeze)
+
+    printUpdated "normal" dString
+    printUpdated "succ'd" $ List.map (Leaf.map succ) <$> dString
+
     pure eQuit
 
 network ::

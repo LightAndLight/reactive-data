@@ -9,6 +9,9 @@ import Reflex.Network
 newtype Leaf a (f :: * -> *)
   = Leaf { unLeaf :: f a }
 
+map :: Functor f => (a -> b) -> Leaf a f -> Leaf b f
+map f (Leaf a) = Leaf (f <$> a)
+
 instance Reactive (Leaf a) where
   data Change (Leaf a) where
     LeafAll :: (Leaf a Identity -> Leaf a Identity) -> Change (Leaf a)

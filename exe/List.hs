@@ -37,12 +37,11 @@ commandToChange (ReplaceAt n c) =
   Cons2 <$> commandToChange (ReplaceAt (n-1) c)
 commandToChange (InsertAt 0 c) =
   Just $
-  ListAll (Cons (Leaf $ Identity c) . Identity)
+  ListCons (Leaf $ Identity c)
 commandToChange (InsertAt n c) =
   Cons2 <$> commandToChange (InsertAt (n-1) c)
 commandToChange (DeleteAt 0) =
-  Just $
-  ListAll (\case; Nil -> Nil; Cons _ (Identity a) -> a)
+  Just ListUncons
 commandToChange (DeleteAt n) =
   Cons2 <$> commandToChange (DeleteAt (n-1))
 commandToChange Quit = Nothing

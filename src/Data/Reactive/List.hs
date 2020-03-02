@@ -8,6 +8,7 @@ import Data.Reactive.Class
 import Reflex
 import Reflex.Network
 
+import Control.Monad
 import Control.Monad.Fix
 
 data List u (f :: * -> *)
@@ -22,13 +23,16 @@ instance Reactive u => Reactive (List u) where
   data Change (List u) where
     Cons1 :: Change u -> Change (List u)
     Cons2 :: Change (List u) -> Change (List u)
-    ListAll :: (List u Identity -> List u Identity) -> Change (List u)
+
+    ListCons :: u Identity -> Change (List u)
+    ListUncons :: Change (List u)
 
   applyChange (Cons1 f) (Cons a b) = Cons (applyChange f a) b
   applyChange Cons1{} a = a
   applyChange (Cons2 f) (Cons a b) = Cons a (applyChange f <$> b)
   applyChange Cons2{} a = a
-  applyChange (ListAll f) x = f x
+  applyChange ListUncons (Cons _ (Identity b)) = b
+  applyChange (ListCons a) b = Cons a (Identity b)
 
   freeze Nil = pure Nil
   freeze (Cons a b) = Cons <$> freeze a <*> (fmap Identity . freeze =<< b)
@@ -40,20 +44,41 @@ instance Reactive u => Reactive (List u) where
     holdReactive b (fmapMaybe (\case; Cons2 x -> Just x; _ -> Nothing) eChange)
 
   holdReactive z eChange = do
+    let
+      shift match e a =
+        case a of
+          ListCons{} -> Just $ fmapMaybe (Just . Cons2 <=< match) e
+          ListUncons -> Just $ fmapMaybe ((\case; Cons2 a -> Just a; _ -> Nothing) <=< match) e
+          Cons2 a' -> shift ((\case; Cons2 x -> Just x; _ -> Nothing) <=< match) e a'
+          _ -> Nothing
+    rec
+      deChange <-
+        holdDyn eChange $
+        attachWithMaybe
+          (shift Just)
+          (current deChange)
+          eChange
+    let eChange' = switchDyn deChange
     rec
       dyn <-
         networkHold
-          (holdInitial z eChange)
+          (holdInitial z eChange')
           (attachWithMaybe
             (\val ->
              \case
-                ListAll f ->
+                ListCons a ->
                   Just $
-                  flip holdInitial eChange . f =<<
-                  sample (current $ freeze val)
+                  (\a' -> Cons a' dyn) <$>
+                  holdInitial
+                    a
+                    (fmapMaybe (\case; Cons1 f -> Just f; _ -> Nothing) eChange')
+                ListUncons ->
+                  case val of
+                    Nil -> Nothing
+                    Cons _ b -> Just $ sample (current b)
                 _ -> Nothing
             )
             (current dyn)
-            eChange
+            eChange'
           )
     pure dyn

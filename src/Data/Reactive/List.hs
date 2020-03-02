@@ -8,6 +8,8 @@ import Data.Reactive.Class
 import Reflex
 import Reflex.Network
 
+import Control.Monad.Fix
+
 data List u (f :: * -> *)
   = Nil
   | Cons (u f) (f (List u f))

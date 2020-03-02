@@ -1,4 +1,5 @@
 {-# language GADTs, KindSignatures, LambdaCase, RecursiveDo, TypeFamilies #-}
+{-# language InstanceSigs, ScopedTypeVariables #-}
 module Data.Reactive.Pair where
 
 import Data.Functor.Identity
@@ -37,6 +38,74 @@ instance (Reactive u, Reactive v) => Reactive (Pair u v) where
                   Just $
                   flip holdInitial eChange . f =<<
                   sample (current $ freeze val)
+                _ -> Nothing
+            )
+            (current dyn)
+            eChange
+          )
+    pure dyn
+
+data Two u (f :: * -> *) = Two (u f) (u f)
+
+instance Reactive u => Reactive (Two u) where
+  data Change (Two u) where
+    Two1 :: Change u -> Change (Two u)
+    Two2 :: Change u -> Change (Two u)
+    TwoSwap :: Change (Two u)
+    TwoId :: Change (Two u)
+
+  applyChange (Two1 f) (Two a b) = Two (applyChange f a) b
+  applyChange (Two2 f) (Two a b) = Two a (applyChange f b)
+  applyChange TwoSwap (Two a b) = Two b a
+  applyChange TwoId a = a
+
+  freeze (Two a b) = Two <$> freeze a <*> freeze b
+
+  holdInitial (Two a b) eChange =
+    Two <$>
+    holdInitial
+      a
+      (fmapMaybe
+         (\case; Two1 x -> Just x; _ -> Nothing)
+         eChange
+      ) <*>
+    holdInitial
+      b
+      (fmapMaybe
+         (\case; Two2 x -> Just x; _ -> Nothing)
+         eChange
+      )
+
+  holdReactive z eChange = do
+    rec
+      deChange <-
+        holdDyn eChange $
+        attachWithMaybe
+          (\e ->
+           \case
+             TwoSwap ->
+               Just $
+               (\case
+                  Two1 f -> Two2 f
+                  Two2 f -> Two1 f
+                  TwoSwap -> TwoId
+                  TwoId -> TwoSwap
+               ) <$>
+               e
+             _ -> Nothing
+          )
+          (current deChange)
+          eChange
+    let eChange' = switchDyn deChange
+    init <- holdInitial z eChange'
+    rec
+      dyn <-
+        holdDyn
+          init
+          (attachWithMaybe
+            (\(Two a b) ->
+             \case
+                TwoSwap -> Just $ Two b a
                 _ -> Nothing
             )
             (current dyn)

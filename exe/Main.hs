@@ -22,30 +22,40 @@ toString Nil = []
 toString (Cons (Leaf (Identity a)) (Identity b)) =
   a : toString  b
 
+type ReactivePair = Pair (Leaf Int)
+
+toPair :: ReactivePair Identity -> (Int, Int)
+toPair (Pair (Leaf (Identity a)) (Leaf (Identity b))) = (a, b)
+
 data Command
   = InsertAt Int Char
   | ReplaceAt Int Char
   | DeleteAt Int
+  | Swap
+  | IncFst
+  | IncSnd
   | Quit
   deriving Read
 
-commandToChange :: Command -> Maybe (Change ReactiveString)
-commandToChange (ReplaceAt 0 c) =
-  Just $
-  Cons1 . LeafAll $ const (Leaf $ Identity c)
-commandToChange (ReplaceAt n c) =
-  Cons2 <$> commandToChange (ReplaceAt (n-1) c)
-commandToChange (InsertAt 0 c) =
-  Just $
-  ListAll (Cons (Leaf $ Identity c) . Identity)
-commandToChange (InsertAt n c) =
-  Cons2 <$> commandToChange (InsertAt (n-1) c)
-commandToChange (DeleteAt 0) =
-  Just $
-  ListAll (\case; Nil -> Nil; Cons _ (Identity a) -> a)
-commandToChange (DeleteAt n) =
-  Cons2 <$> commandToChange (DeleteAt (n-1))
-commandToChange Quit = Nothing
+commandToChange_String :: Command -> Maybe (Change ReactiveString)
+commandToChange_String command =
+  case command of
+    ReplaceAt 0 c ->
+      Just $
+      Cons1 . LeafAll $ const (Leaf $ Identity c)
+    ReplaceAt n c ->
+      Cons2 <$> commandToChange (ReplaceAt (n-1) c)
+    InsertAt 0 c ->
+      Just $
+      ListAll (Cons (Leaf $ Identity c) . Identity)
+    InsertAt n c ->
+      Cons2 <$> commandToChange (InsertAt (n-1) c)
+    DeleteAt 0 ->
+      Just $
+      ListAll (\case; Nil -> Nil; Cons _ (Identity a) -> a)
+    DeleteAt n ->
+      Cons2 <$> commandToChange (DeleteAt (n-1))
+    Quit -> Nothing
 
 main :: IO ()
 main = do
@@ -76,12 +86,26 @@ network ::
   Event t Command ->
   m
     ( Dynamic t (ReactiveString (Dynamic t))
+    , Dynamic t (ReactivePair (Dynamic t))
     , Event t ()
     )
 network eCommand = do
-  dString <- holdReactive Nil (fmapMaybe commandToChange eCommand)
+  dString <- holdReactive Nil (fmapMaybe commandToChange_String eCommand)
+  dPair <-
+    holdReactive
+      (Pair (Leaf 0) (Leaf 0))
+      (fmapMaybe
+        (\command ->
+           case command of
+             Swap -> _
+             IncFst -> _
+             IncSnd -> _
+        )
+       eCommand
+      )
   pure
     ( dString
+    , dPair
     , fmapMaybe
         (\case; Quit -> Just (); _ -> Nothing)
         eCommand

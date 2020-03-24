@@ -12,34 +12,41 @@ instance (Reactive u, Reactive v) => Reactive (Pair u v) where
   data Change (Pair u v) where
     Pair1 :: Change u -> Change (Pair u v)
     Pair2 :: Change v -> Change (Pair u v)
-    PairAll :: (Pair u v Identity -> Pair u v Identity) -> Change (Pair u v)
+    Pair12 :: Change u -> Change v -> Change (Pair u v)
 
   applyChange (Pair1 f) (Pair a b) = Pair (applyChange f a) b
   applyChange (Pair2 f) (Pair a b) = Pair a (applyChange f b)
-  applyChange (PairAll f) x = f x
+  applyChange (Pair12 f g) (Pair a b) = Pair (applyChange f a) (applyChange g b)
 
   freeze (Pair a b) = Pair <$> freeze a <*> freeze b
 
   holdInitial (Pair a b) eChange =
     Pair <$>
-    holdInitial a (fmapMaybe (\case; Pair1 x -> Just x; _ -> Nothing) eChange) <*>
-    holdInitial b (fmapMaybe (\case; Pair2 x -> Just x; _ -> Nothing) eChange)
+    holdInitial
+      a
+      (fmapMaybe
+         (\case
+             Pair1 x -> Just x
+             Pair12 x _ -> Just x
+             _ -> Nothing
+         )
+         eChange
+      ) <*>
+    holdInitial
+      b
+      (fmapMaybe
+         (\case
+             Pair2 x -> Just x
+             Pair12 _ x -> Just x
+             _ -> Nothing
+         )
+         eChange
+      )
 
   holdReactive z eChange = do
     rec
       dyn <-
         networkHold
           (holdInitial z eChange)
-          (attachWithMaybe
-            (\val ->
-             \case
-                PairAll f ->
-                  Just $
-                  flip holdInitial eChange . f =<<
-                  sample (current $ freeze val)
-                _ -> Nothing
-            )
-            (current dyn)
-            eChange
-          )
+          never
     pure dyn
